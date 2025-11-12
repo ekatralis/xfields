@@ -682,6 +682,7 @@ def _configure_grid(vname, v_grid, dv, v_range, nv):
                                                   f'fixed when providing n{vname}=1')
                 v_grid = np.array([v_range[0]]).astype(np.float64)
             else:
+                assert nv > 0, (f'Fieldmaps are 3D: n{vname}>=1')
                 v_grid = np.linspace(v_range[0], v_range[1], nv)
 
     return np.array(v_grid).astype(np.float64)
