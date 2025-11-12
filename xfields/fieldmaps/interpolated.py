@@ -444,7 +444,7 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
                 nelem = self.phi.size,
                 row_size = self.nx,
                 stride_in_dbl = self.phi.strides[0]/8,
-                factor = 1/(2*self.dx),
+                factor = 1/(2*self.dx) if self.dx > 0 else np.float64(0),
                 matrix_buffer = self._xobject.phi._buffer.buffer,
                 matrix_offset = (self._xobject.phi._offset
                                + self._xobject.phi._data_offset),
@@ -455,7 +455,7 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
                 nelem = self.phi.size,
                 row_size = self.ny,
                 stride_in_dbl = self.phi.strides[1]/8,
-                factor = 1/(2*self.dy),
+                factor = 1/(2*self.dy) if self.dy > 0 else np.float64(0),
                 matrix_buffer = self._xobject.phi._buffer.buffer,
                 matrix_offset = (self._xobject.phi._offset
                                + self._xobject.phi._data_offset),
@@ -466,7 +466,7 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
                 nelem = self.phi.size,
                 row_size = self.nz,
                 stride_in_dbl = self.phi.strides[2]/8,
-                factor = 1/(2*self.dz),
+                factor = 1/(2*self.dz) if self.dz > 0 else np.float64(0),
                 matrix_buffer = self._xobject.phi._buffer.buffer,
                 matrix_offset = (self._xobject.phi._offset
                                + self._xobject.phi._data_offset),
@@ -514,7 +514,15 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
 
         scale_dx, scale_dy, scale_dz = self.scale_coordinates_in_solver
 
+        if self.dx == 0 or self.dy == 0:
+            raise NotImplementedError(
+                "No available solver can handle one-dimensional " \
+                "transverse fieldmap. Please provide custom solver")
+
         if solver == 'FFTSolver3D':
+            assert self.dz > 0, ("3D Solver requires nonzero dz. "
+                                 "use a 2p5D solver for single slices")
+            
             solver = FFTSolver3D(
                     dx=self.dx*scale_dx,
                     dy=self.dy*scale_dy,
@@ -673,6 +681,9 @@ def _configure_grid(vname, v_grid, dv, v_range, nv):
                                                   f'fixed when providing d{vname}=0')
                 v_grid = np.array([v_range[0]]).astype(np.float64)
             else:
+                assert v_range[0] != v_range[1], (f'{vname}_range must be a range,'
+                                                  f' if fixed {vname} value is '
+                                                  f'desired use d{vname}=0') 
                 v_grid = np.arange(v_range[0], v_range[1]+0.1*dv, dv)
         else:
             assert nv is not None, (f'n{vname} must be given '
@@ -683,6 +694,9 @@ def _configure_grid(vname, v_grid, dv, v_range, nv):
                 v_grid = np.array([v_range[0]]).astype(np.float64)
             else:
                 assert nv > 0, (f'Fieldmaps are 3D: n{vname}>=1')
+                assert v_range[0] != v_range[1], (f'{vname}_range must be a range,'
+                                                  f' if fixed {vname} value is '
+                                                  f'desired use n{vname}=1') 
                 v_grid = np.linspace(v_range[0], v_range[1], nv)
 
     return np.array(v_grid).astype(np.float64)
