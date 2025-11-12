@@ -590,21 +590,30 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
         """
         Horizontal cell size in meters.
         """
-        return self.x_grid[1] - self.x_grid[0]
+        try:
+            return self.x_grid[1] - self.x_grid[0]
+        except IndexError:
+            return np.float64(0)
 
     @property
     def dy(self):
         """
         Vertical cell size in meters.
         """
-        return self.y_grid[1] - self.y_grid[0]
+        try:
+            return self.y_grid[1] - self.y_grid[0]
+        except IndexError:
+            return np.float64(0)
 
     @property
     def dz(self):
         """
         Longitudinal cell size in meters.
         """
-        return self.z_grid[1] - self.z_grid[0]
+        try:
+            return self.z_grid[1] - self.z_grid[0]
+        except IndexError:
+            return np.float64(0)
 
     # TODO: these reshapes can be avoided by allocating 3d arrays directly in the xobject
     @property
@@ -647,9 +656,10 @@ def _configure_grid(vname, v_grid, dv, v_range, nv):
                             f'if {vname}_grid is provided ')
         assert v_range is None, (f'{vname}_range cannot be given '
                                  f'if {vname}_grid is provided')
-        ddd = np.diff(v_grid)
-        assert np.allclose(ddd,ddd[0]), (f'{vname}_grid must be '
-                                          'unifirmly spaced')
+        if len(v_grid) > 1:
+            ddd = np.diff(v_grid)
+            assert np.allclose(ddd,ddd[0]), (f'{vname}_grid must be '
+                                            'unifirmly spaced')
     else:
         assert v_range is not None, (f'{vname}_grid or {vname}_range '
                                      f'must be provided')
@@ -658,12 +668,22 @@ def _configure_grid(vname, v_grid, dv, v_range, nv):
         if dv is not None:
             assert nv is None, (f'n{vname} cannot be given '
                                     f'if d{vname} is provided ')
-            v_grid = np.arange(v_range[0], v_range[1]+0.1*dv, dv)
+            if dv == 0:
+                assert v_range[0] == v_range[1], (f'{vname}_range must be '
+                                                  f'fixed when providing d{vname}=0')
+                v_grid = np.array([v_range[0]]).astype(np.float64)
+            else:
+                v_grid = np.arange(v_range[0], v_range[1]+0.1*dv, dv)
         else:
             assert nv is not None, (f'n{vname} must be given '
                                     f'if d{vname} is not provided ')
-            v_grid = np.linspace(v_range[0], v_range[1], nv)
+            if nv == 1:
+                assert v_range[0] == v_range[1], (f'{vname}_range must be '
+                                                  f'fixed when providing n{vname}=1')
+                v_grid = np.array([v_range[0]]).astype(np.float64)
+            else:
+                v_grid = np.linspace(v_range[0], v_range[1], nv)
 
-    return v_grid
+    return np.array(v_grid).astype(np.float64)
 
 

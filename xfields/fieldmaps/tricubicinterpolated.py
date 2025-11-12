@@ -511,20 +511,29 @@ class TriCubicInterpolatedFieldMap(xo.HybridClass):
         """
         Horizontal cell size in meters.
         """
-        return self.x_grid[1] - self.x_grid[0]
+        try:
+            return self.x_grid[1] - self.x_grid[0]
+        except IndexError:
+            return np.float64(0)
 
     @property
     def dy(self):
         """
         Vertical cell size in meters.
         """
-        return self.y_grid[1] - self.y_grid[0]
+        try:
+            return self.y_grid[1] - self.y_grid[0]
+        except IndexError:
+            return np.float64(0)
 
     @property
     def dz(self):
         """
         Longitudinal cell size in meters.
         """
-        return self.z_grid[1] - self.z_grid[0]
+        try:
+            return self.z_grid[1] - self.z_grid[0]
+        except IndexError:
+            return np.float64(0)
 
 
