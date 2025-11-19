@@ -4,3 +4,4 @@
 # ########################################### #
 
 from .fftsolvers import FFTSolver3D, FFTSolver2p5D
+from .fdsolvers import FDStaircaseSolver2p5D
