@@ -12,7 +12,8 @@ from .base import Solver
 from xobjects import context_default
 import xtrack as xt
 import xobjects as xo
-from PyPIC.geom_impact_poly import polyg_cham_geom_object as PyPIC_Chamber
+# from PyPIC.geom_impact_poly import polyg_cham_geom_object as PyPIC_Chamber
+from ._temp.geom_impact_poly import polyg_cham_geom_object as PyPIC_Chamber
 import scipy.sparse as scsp
 
 from tqdm import tqdm
@@ -34,6 +35,7 @@ class FDStaircaseSolver2p5D(Solver):
             context = context_default
 
         self.context = context
+        print("[XFields] Staircase init")
         # To generate pairs of xy coordinates. We iterate with F contiguity in mind
         # as such, we use the "indexing='ij'" option for meshgrid
         nx = len(x_grid)
@@ -163,6 +165,7 @@ class FDShortleyWellerSolver2p5D(Solver):
             context = context_default
 
         self.context = context
+        print("[XFields] ShortleyWeller init")
         # To generate pairs of xy coordinates. We iterate with F contiguity in mind
         # as such, we use the "indexing='ij'" option for meshgrid
         nx = len(x_grid)
