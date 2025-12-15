@@ -8,6 +8,7 @@ import numpy as np
 import xobjects as xo
 import xtrack as xt
 from ..solvers.fftsolvers import FFTSolver3D, FFTSolver2p5D, FFTSolver2p5DAveraged
+from ..solvers.fdsolvers import FDShortleyWellerSolver2p5D, FDStaircaseSolver2p5D
 
 _TriLinearInterpolatedFielmap_kernels = {
     'central_diff': xo.Kernel(
@@ -436,39 +437,53 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
         context = self._buffer.context
 
         # Compute gradient
-        context.kernels.central_diff(
-                nelem = self.phi.size,
-                row_size = self.nx,
-                stride_in_dbl = self.phi.strides[0]/8,
-                factor = 1/(2*self.dx),
-                matrix_buffer = self._xobject.phi._buffer.buffer,
-                matrix_offset = (self._xobject.phi._offset
-                               + self._xobject.phi._data_offset),
-                res_buffer = self._xobject.dphi_dx._buffer.buffer,
-                res_offset = (self._xobject.dphi_dx._offset
-                            + self._xobject.dphi_dx._data_offset))
-        context.kernels.central_diff(
-                nelem = self.phi.size,
-                row_size = self.ny,
-                stride_in_dbl = self.phi.strides[1]/8,
-                factor = 1/(2*self.dy),
-                matrix_buffer = self._xobject.phi._buffer.buffer,
-                matrix_offset = (self._xobject.phi._offset
-                               + self._xobject.phi._data_offset),
-                res_buffer = self._xobject.dphi_dy._buffer.buffer,
-                res_offset = (self._xobject.dphi_dy._offset
-                            + self._xobject.dphi_dy._data_offset))
-        context.kernels.central_diff(
-                nelem = self.phi.size,
-                row_size = self.nz,
-                stride_in_dbl = self.phi.strides[2]/8,
-                factor = 1/(2*self.dz),
-                matrix_buffer = self._xobject.phi._buffer.buffer,
-                matrix_offset = (self._xobject.phi._offset
-                               + self._xobject.phi._data_offset),
-                res_buffer = self._xobject.dphi_dz._buffer.buffer,
-                res_offset = (self._xobject.dphi_dz._offset
-                            + self._xobject.dphi_dz._data_offset))
+        isSW = isinstance(self.solver, FDShortleyWellerSolver2p5D)
+        if not isSW:
+            context.kernels.central_diff(
+                    nelem = self.phi.size,
+                    row_size = self.nx,
+                    stride_in_dbl = self.phi.strides[0]/8,
+                    factor = 1/(2*self.dx),
+                    matrix_buffer = self._xobject.phi._buffer.buffer,
+                    matrix_offset = (self._xobject.phi._offset
+                                + self._xobject.phi._data_offset),
+                    res_buffer = self._xobject.dphi_dx._buffer.buffer,
+                    res_offset = (self._xobject.dphi_dx._offset
+                                + self._xobject.dphi_dx._data_offset))
+            context.kernels.central_diff(
+                    nelem = self.phi.size,
+                    row_size = self.ny,
+                    stride_in_dbl = self.phi.strides[1]/8,
+                    factor = 1/(2*self.dy),
+                    matrix_buffer = self._xobject.phi._buffer.buffer,
+                    matrix_offset = (self._xobject.phi._offset
+                                + self._xobject.phi._data_offset),
+                    res_buffer = self._xobject.dphi_dy._buffer.buffer,
+                    res_offset = (self._xobject.dphi_dy._offset
+                                + self._xobject.dphi_dy._data_offset))
+            context.kernels.central_diff(
+                    nelem = self.phi.size,
+                    row_size = self.nz,
+                    stride_in_dbl = self.phi.strides[2]/8,
+                    factor = 1/(2*self.dz),
+                    matrix_buffer = self._xobject.phi._buffer.buffer,
+                    matrix_offset = (self._xobject.phi._offset
+                                + self._xobject.phi._data_offset),
+                    res_buffer = self._xobject.dphi_dz._buffer.buffer,
+                    res_offset = (self._xobject.dphi_dz._offset
+                                + self._xobject.dphi_dz._data_offset))
+        else:
+            _phi = self.phi
+            if _phi.ndim > 2:
+                _phi = - _phi.reshape(-1, _phi.shape[-1], order = 'F')  # (nx*ny, nz)
+            else:
+                _phi = - _phi.reshape(-1, order='F')  # (nx*ny)
+                
+            _dphi_dx = (self.solver.Dx @ _phi).flatten(order = 'F')
+            _dphi_dy = (self.solver.Dy @ _phi).flatten(order = 'F')
+            self._dphi_dx = _dphi_dx
+            self._dphi_dy = _dphi_dy
+            
 
     #@profile
     def update_phi_from_rho(self, solver=None):
