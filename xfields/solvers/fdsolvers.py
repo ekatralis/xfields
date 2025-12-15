@@ -203,26 +203,26 @@ class FDShortleyWellerSolver2p5D(Solver):
                     hw = Dh
                 else:
                     x_int,y_int,z_int,Nx_int,Ny_int, i_found_int = chamber.impact_point_and_normal(na(xn[u]), na(yn[u]), na(0.), na(xn[u-1]), na(yn[u-1]), na(0.), resc_fac=.995, flag_robust=False)
-                    hw = np.abs(y_int[0]-yn[u])
+                    hw = np.abs(x_int[0]-xn[u])
 
                 if flag_inside_n[u+1]: #phi(i+1,j)
                     he = Dh
                 else:
                     x_int,y_int,z_int,Nx_int,Ny_int, i_found_int = chamber.impact_point_and_normal(na(xn[u]), na(yn[u]), na(0.), na(xn[u+1]), na(yn[u+1]), na(0.), resc_fac=.995, flag_robust=False)
-                    he = np.abs(y_int[0]-yn[u])
+                    he = np.abs(x_int[0]-xn[u])
 
                 if flag_inside_n[u-nx]: #phi(i,j-1)
                     hs = Dh
                 else:
                     x_int,y_int,z_int,Nx_int,Ny_int, i_found_int = chamber.impact_point_and_normal(na(xn[u]), na(yn[u]), na(0.), na(xn[u-nx]), na(yn[u-nx]), na(0.), resc_fac=.995, flag_robust=False)
-                    hs = np.abs(x_int[0]-xn[u])
+                    hs = np.abs(y_int[0]-yn[u])
                     #~ print hs
 
                 if flag_inside_n[u+nx]: #phi(i,j+1)
                     hn = Dh
                 else:
                     x_int,y_int,z_int,Nx_int,Ny_int, i_found_int = chamber.impact_point_and_normal(na(xn[u]), na(yn[u]), na(0.), na(xn[u+nx]), na(yn[u+nx]), na(0.), resc_fac=.995, flag_robust=False)
-                    hn = np.abs(x_int[0]-xn[u])
+                    hn = np.abs(y_int[0]-yn[u])
                     #~ print hn
 
 
@@ -241,32 +241,31 @@ class FDShortleyWellerSolver2p5D(Solver):
                 # Build Dx matrix
                 if hn<Dh*tol_der:
                     if hs>=Dh*tol_der:
-                        Dx[u,u] = -1./hs
-                        Dx[u,u-nx]=1./hs
+                        Dy[u,u] = -1./hs
+                        Dy[u,u-nx]=1./hs
                 elif hs<Dh*tol_der:
                     if hn>=Dh*tol_der:
-                        Dx[u,u] = 1./hn
-                        Dx[u,u+nx]=-1./hn
+                        Dy[u,u] = 1./hn
+                        Dy[u,u+nx]=-1./hn
                 else:
-                    Dx[u,u] = (1./(2*hn)-1./(2*hs))
-                    Dx[u,u-nx]=1./(2*hs)
-                    Dx[u,u+nx]=-1./(2*hn)
+                    Dy[u,u] = (1./(2*hn)-1./(2*hs))
+                    Dy[u,u-nx]=1./(2*hs)
+                    Dy[u,u+nx]=-1./(2*hn)
 
 
                 # Build Dy matrix	
                 if he<Dh*tol_der:
                     if hw>=Dh*tol_der:
-                        Dy[u,u] = -1./hw
-                        Dy[u,u-1]=1./hw
+                        Dx[u,u] = -1./hw
+                        Dx[u,u-1]=1./hw
                 elif hw<Dh*tol_der:
                     if he>=Dh*tol_der:
-                        Dy[u,u] = 1./he
-                        Dy[u,u+1]=-1./(he)
+                        Dx[u,u] = 1./he
+                        Dx[u,u+1]=-1./(he)
                 else:
-                    Dy[u,u] = (1./(2*he)-1./(2*hw))
-                    Dy[u,u-1]=1./(2*hw)
-                    Dy[u,u+1]=-1./(2*he)
-
+                    Dx[u,u] = (1./(2*he)-1./(2*hw))
+                    Dx[u,u-1]=1./(2*hw)
+                    Dx[u,u+1]=-1./(2*he)
             else:
                 # external nodes
                 A[u,u]=1.
@@ -291,6 +290,8 @@ class FDShortleyWellerSolver2p5D(Solver):
         self.Asel = self.sparse_lib.csr_matrix(Asel)
         self.Msel = self.sparse_lib.csr_matrix(Msel)
         self.MselT = self.sparse_lib.csr_matrix(Msel.T)
+        self.Dx = self.sparse_lib.csr_matrix(Dx)
+        self.Dy = self.sparse_lib.csr_matrix(Dy)
 
         if sparse_solver_kwargs is None:
             sparse_solver_kwargs = {}
