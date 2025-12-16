@@ -58,12 +58,21 @@ class FDStaircaseSolver2p5D(Solver):
         # import matplotlib.pyplot as plt
         flag_outside_n=chamber.is_outside(xn,yn)
         flag_inside_n=~(flag_outside_n)
+
+        flag_outside_n_mat = np.reshape(flag_outside_n,(nx,ny), order = 'F')
+        flag_outside_n_mat = flag_outside_n_mat.T
+        [gx,gy] = np.gradient(np.double(flag_outside_n_mat))
+        gradmod=abs(gx)+abs(gy)
+        flag_border_mat=np.logical_and((gradmod>0), flag_outside_n_mat)
+        flag_border_n = flag_border_mat.flatten()
         # plt.figure(12)
         # plt.scatter(xn[flag_inside_n],yn[flag_inside_n],color = 'b')
         # plt.scatter(xn[flag_outside_n],yn[flag_outside_n],color = 'r')
         # plt.show()
 
-        A=scsp.lil_matrix((nx*ny,nx*ny))
+        A = scsp.lil_matrix((nx*ny,nx*ny))
+        Dx = scsp.lil_matrix((nx*ny,nx*ny))
+        Dy = scsp.lil_matrix((nx*ny,nx*ny))
 
         # Build A matrix
         for u in tqdm(range(0,nx*ny)):
@@ -76,6 +85,30 @@ class FDStaircaseSolver2p5D(Solver):
             else:
                 # external nodes
                 A[u,u]=1.
+
+            if flag_border_n[u]:
+                if flag_inside_n[u-1]:
+                    Dx[u,u] = 1/(Dh)
+                    Dx[u,u-1] = -1/(Dh)
+                elif flag_inside_n[u+1]:
+                    Dx[u,u] = - 1/(Dh)
+                    Dx[u,u+1] = 1/(Dh)
+            else:
+                if flag_inside_n[u]:
+                    Dx[u,u+1] = 1/(2*Dh)
+                    Dx[u,u-1] = -1/(2*Dh)
+            if flag_border_n[u]:
+                if flag_inside_n[u-nx]:
+                    Dy[u,u] = 1/(Dh)
+                    Dy[u,u-nx] = -1/(Dh)
+                elif flag_inside_n[u+nx]:
+                    Dy[u,u] = - 1/(Dh)
+                    Dy[u,u+nx] = 1/(Dh)
+            else:
+                if flag_inside_n[u]:
+                    Dy[u,u+nx] = 1/(2*Dh)
+                    Dy[u,u-nx] = -1/(2*Dh)
+            
 
         A=A.tocsr()
 
@@ -92,6 +125,22 @@ class FDStaircaseSolver2p5D(Solver):
         # plt.colorbar(label="Value")
  
         # plt.show()
+        # np.testing.assert_allclose(Dx@np.ones(Dx.shape[1]),np.zeros(Dx.shape[1]) , atol=1e-10)
+        # np.testing.assert_allclose(Dy@np.ones(Dy.shape[1]),np.zeros(Dy.shape[1]) , atol=1e-10)
+        import matplotlib.pyplot as plt
+        plt.figure(1)
+        plt.imshow(np.reshape(Dx@xn, (nx, ny), order = 'F').T)
+        plt.colorbar()
+        plt.figure(2)
+        plt.imshow(np.reshape(Dx@yn, (nx, ny), order = 'F').T)
+        plt.colorbar()
+        plt.figure(3)
+        plt.imshow(np.reshape(Dy@yn, (nx, ny), order = 'F').T)
+        plt.colorbar()
+        plt.figure(4)
+        plt.imshow(np.reshape(Dy@xn, (nx, ny), order = 'F').T)
+        plt.colorbar()
+        plt.show()
 
         if remove_external_nodes_from_mat:
             diagonal = A.diagonal()
@@ -114,6 +163,8 @@ class FDStaircaseSolver2p5D(Solver):
         self.Asel = self.sparse_lib.csr_matrix(Asel)
         self.Msel = self.sparse_lib.csr_matrix(Msel)
         self.MselT = self.sparse_lib.csr_matrix(Msel.T)
+        self.Dx = self.sparse_lib.csr_matrix(Dx)
+        self.Dy = self.sparse_lib.csr_matrix(Dy)
 
         if sparse_solver_kwargs is None:
             sparse_solver_kwargs = {}
@@ -241,31 +292,31 @@ class FDShortleyWellerSolver2p5D(Solver):
                 # Build Dx matrix
                 if hn<Dh*tol_der:
                     if hs>=Dh*tol_der:
-                        Dy[u,u] = -1./hs
-                        Dy[u,u-nx]=1./hs
+                        Dy[u,u] = 1./hs
+                        Dy[u,u-nx]= - 1./hs
                 elif hs<Dh*tol_der:
                     if hn>=Dh*tol_der:
-                        Dy[u,u] = 1./hn
-                        Dy[u,u+nx]=-1./hn
+                        Dy[u,u] = - 1./hn
+                        Dy[u,u+nx]= 1./hn
                 else:
-                    Dy[u,u] = (1./(2*hn)-1./(2*hs))
-                    Dy[u,u-nx]=1./(2*hs)
-                    Dy[u,u+nx]=-1./(2*hn)
+                    Dy[u,u] = (1./(2*hs) - 1./(2*hn))
+                    Dy[u,u-nx]= - 1./(2*hs)
+                    Dy[u,u+nx]= 1./(2*hn)
 
 
                 # Build Dy matrix	
                 if he<Dh*tol_der:
                     if hw>=Dh*tol_der:
-                        Dx[u,u] = -1./hw
-                        Dx[u,u-1]=1./hw
+                        Dx[u,u] = 1./hw
+                        Dx[u,u-1]= - 1./hw
                 elif hw<Dh*tol_der:
                     if he>=Dh*tol_der:
-                        Dx[u,u] = 1./he
-                        Dx[u,u+1]=-1./(he)
+                        Dx[u,u] = - 1./he
+                        Dx[u,u+1]= 1./(he)
                 else:
-                    Dx[u,u] = (1./(2*he)-1./(2*hw))
-                    Dx[u,u-1]=1./(2*hw)
-                    Dx[u,u+1]=-1./(2*he)
+                    Dx[u,u] = (1./(2*hw) - 1./(2*he))
+                    Dx[u,u-1]= - 1./(2*hw)
+                    Dx[u,u+1]= 1./(2*he)
             else:
                 # external nodes
                 A[u,u]=1.
@@ -290,8 +341,28 @@ class FDShortleyWellerSolver2p5D(Solver):
         self.Asel = self.sparse_lib.csr_matrix(Asel)
         self.Msel = self.sparse_lib.csr_matrix(Msel)
         self.MselT = self.sparse_lib.csr_matrix(Msel.T)
+        np.testing.assert_allclose(Dx@np.ones(Dx.shape[1]),np.zeros(Dx.shape[1]) , atol=1e-10)
+        np.testing.assert_allclose(Dy@np.ones(Dy.shape[1]),np.zeros(Dy.shape[1]) , atol=1e-10)
+        import matplotlib.pyplot as plt
+        plt.figure(1)
+        plt.imshow(np.reshape(Dx@xn, (nx, ny), order = 'F').T)
+        plt.colorbar()
+        plt.figure(2)
+        plt.imshow(np.reshape(Dx@yn, (nx, ny), order = 'F').T)
+        plt.colorbar()
+        plt.figure(3)
+        plt.imshow(np.reshape(Dy@yn, (nx, ny), order = 'F').T)
+        plt.colorbar()
+        plt.figure(4)
+        plt.imshow(np.reshape(Dy@xn, (nx, ny), order = 'F').T)
+        plt.colorbar()
+        plt.show()
+        # np.testing.assert_allclose((Dx@xn)[flag_inside_n],np.ones(sum(flag_inside_n)) , atol=1e-10)
+        # np.testing.assert_allclose((Dy@yn)[flag_inside_n],np.ones(sum(flag_inside_n)) , atol=1e-10)
         self.Dx = self.sparse_lib.csr_matrix(Dx)
         self.Dy = self.sparse_lib.csr_matrix(Dy)
+        self.xn = xn
+        self.yn = yn
 
         if sparse_solver_kwargs is None:
             sparse_solver_kwargs = {}

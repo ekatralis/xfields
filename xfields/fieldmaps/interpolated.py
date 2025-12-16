@@ -437,8 +437,8 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
         context = self._buffer.context
 
         # Compute gradient
-        isSW = isinstance(self.solver, FDShortleyWellerSolver2p5D)
-        if not isSW:
+        isFD = isinstance(self.solver, FDShortleyWellerSolver2p5D) or isinstance(self.solver, FDStaircaseSolver2p5D)
+        if not isFD:
             context.kernels.central_diff(
                     nelem = self.phi.size,
                     row_size = self.nx,
@@ -475,9 +475,9 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
         else:
             _phi = self.phi
             if _phi.ndim > 2:
-                _phi = - _phi.reshape(-1, _phi.shape[-1], order = 'F')  # (nx*ny, nz)
+                _phi = _phi.reshape(-1, _phi.shape[-1], order = 'F')  # (nx*ny, nz)
             else:
-                _phi = - _phi.reshape(-1, order='F')  # (nx*ny)
+                _phi = _phi.reshape(-1, order='F')  # (nx*ny)
                 
             _dphi_dx = (self.solver.Dx @ _phi).flatten(order = 'F')
             _dphi_dy = (self.solver.Dy @ _phi).flatten(order = 'F')
