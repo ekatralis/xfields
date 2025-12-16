@@ -60,11 +60,23 @@ class FDStaircaseSolver2p5D(Solver):
         flag_inside_n=~(flag_outside_n)
 
         flag_outside_n_mat = np.reshape(flag_outside_n,(nx,ny), order = 'F')
-        flag_outside_n_mat = flag_outside_n_mat.T
+        assert flag_outside_n_mat[0,:].all(), (
+            "Chamber not inside grid on the left side"
+        )
+        assert flag_outside_n_mat[nx-1,:].all(), (
+            "Chamber not inside grid on the right side"
+        )
+        assert flag_outside_n_mat[:,0].all(), (
+            "Chamber not inside grid on the top side"
+        )
+        assert flag_outside_n_mat[:,ny-1].all(), (
+            "Chamber not inside grid on the bottom side"
+        )
+        
         [gx,gy] = np.gradient(np.double(flag_outside_n_mat))
         gradmod=abs(gx)+abs(gy)
         flag_border_mat=np.logical_and((gradmod>0), flag_outside_n_mat)
-        flag_border_n = flag_border_mat.flatten()
+        flag_border_n = flag_border_mat.flatten(order = "F")
         # plt.figure(12)
         # plt.scatter(xn[flag_inside_n],yn[flag_inside_n],color = 'b')
         # plt.scatter(xn[flag_outside_n],yn[flag_outside_n],color = 'r')
@@ -238,6 +250,20 @@ class FDShortleyWellerSolver2p5D(Solver):
         
         # import matplotlib.pyplot as plt
         flag_outside_n = chamber.is_outside(xn,yn)
+        flag_outside_n_mat = np.reshape(flag_outside_n,(nx,ny), order = 'F')
+        assert flag_outside_n_mat[0,:].all(), (
+            "Chamber not inside grid on the left side"
+        )
+        assert flag_outside_n_mat[nx-1,:].all(), (
+            "Chamber not inside grid on the right side"
+        )
+        assert flag_outside_n_mat[:,0].all(), (
+            "Chamber not inside grid on the top side"
+        )
+        assert flag_outside_n_mat[:,ny-1].all(), (
+            "Chamber not inside grid on the bottom side"
+        )
+
         flag_inside_n = ~flag_outside_n
         A=scsp.lil_matrix((nx*ny,nx*ny)); #allocate a sparse matrix
         Dx=scsp.lil_matrix((nx*ny,nx*ny)); #allocate a sparse matrix
