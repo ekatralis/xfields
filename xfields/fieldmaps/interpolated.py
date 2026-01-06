@@ -177,7 +177,9 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
                  solver=None,
                  scale_coordinates_in_solver=(1.,1.,1.),
                  updatable=True,
-                 fftplan=None
+                 fftplan=None,
+                 chamber=None,
+                 solver_kwargs=None
                  ):
 
         if _xobject is not None:
@@ -216,12 +218,24 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
             only_if_needed=True,
             extra_compile_args=[f"-I{xt.__path__[0]}"],
         )
-
+        if solver_kwargs is None:
+            self.solver_kwargs = {}
+        self.chamber = chamber
         if isinstance(solver, str):
-            self.solver = self.generate_solver(solver, fftplan)
+            self.solver, self.solver_type = self.generate_solver(solver, fftplan)
         else:
             #TODO: consistency check to be added
             self.solver = solver
+            if (isinstance(self.solver, FDShortleyWellerSolver2p5D) or
+                isinstance(self.solver, FDStaircaseSolver2p5D)):
+                solvertype = "FD"
+            elif (isinstance(self.solver, FFTSolver2p5D) or
+                  isinstance(self.solver, FFTSolver3D) or 
+                  isinstance(self.solver, FFTSolver2p5DAveraged)):
+                solvertype = "FFT"
+            else:
+                solvertype = type(solver)
+            self.solver_type = solvertype
 
         # Set rho
         if rho is not None:
@@ -437,8 +451,35 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
         context = self._buffer.context
 
         # Compute gradient
-        isFD = isinstance(self.solver, FDShortleyWellerSolver2p5D) or isinstance(self.solver, FDStaircaseSolver2p5D)
-        if not isFD:
+        if self.solver_type == "FD":
+            _phi = self.phi
+            if _phi.ndim > 2:
+                _phi = _phi.reshape(-1, _phi.shape[-1], order = 'F')  # (nx*ny, nz)
+            else:
+                _phi = _phi.reshape(-1, order='F')  # (nx*ny)
+            
+            # Calculate dphi_dx and dphi_dy using FD matrices
+            _dphi_dx = (self.solver.Dx @ _phi).flatten(order = 'F')
+            _dphi_dy = (self.solver.Dy @ _phi).flatten(order = 'F')
+            self._dphi_dx = _dphi_dx
+            self._dphi_dy = _dphi_dy
+            # Calculate dphi_dz using central difference
+            context.kernels.central_diff(
+                    nelem = self.phi.size,
+                    row_size = self.nz,
+                    stride_in_dbl = self.phi.strides[2]/8,
+                    factor = 1/(2*self.dz),
+                    matrix_buffer = self._xobject.phi._buffer.buffer,
+                    matrix_offset = (self._xobject.phi._offset
+                                + self._xobject.phi._data_offset),
+                    res_buffer = self._xobject.dphi_dz._buffer.buffer,
+                    res_offset = (self._xobject.dphi_dz._offset
+                                + self._xobject.dphi_dz._data_offset))
+        else:
+            if self.solver_type != "FFT":
+                import warnings
+                warnings.warn("Unknown solver type, " \
+                "using central difference to compute gradients.")
             context.kernels.central_diff(
                     nelem = self.phi.size,
                     row_size = self.nx,
@@ -472,18 +513,6 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
                     res_buffer = self._xobject.dphi_dz._buffer.buffer,
                     res_offset = (self._xobject.dphi_dz._offset
                                 + self._xobject.dphi_dz._data_offset))
-        else:
-            _phi = self.phi
-            if _phi.ndim > 2:
-                _phi = _phi.reshape(-1, _phi.shape[-1], order = 'F')  # (nx*ny, nz)
-            else:
-                _phi = _phi.reshape(-1, order='F')  # (nx*ny)
-                
-            _dphi_dx = (self.solver.Dx @ _phi).flatten(order = 'F')
-            _dphi_dy = (self.solver.Dy @ _phi).flatten(order = 'F')
-            self._dphi_dx = _dphi_dx
-            self._dphi_dy = _dphi_dy
-            
 
     #@profile
     def update_phi_from_rho(self, solver=None):
@@ -524,6 +553,14 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
         """
 
         scale_dx, scale_dy, scale_dz = self.scale_coordinates_in_solver
+        if "FFT" in solver:
+            assert self.chamber is None, ("FFT is open boundary only")
+            solvertype = "FFT"
+        elif "FD" in solver:
+            assert self.chamber is not None, ("FD methods require a boundary")
+            assert self.scale_coordinates_in_solver == (1.,1.,1.), (
+                "Coordinate scaling is unsupported when using FD")
+            solvertype = "FD"
 
         if solver == 'FFTSolver3D':
             solver = FFTSolver3D(
@@ -549,10 +586,28 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
                     nx=self.nx, ny=self.ny, nz=self.nz,
                     context=self._buffer.context,
                     fftplan=fftplan)
+        elif solver == 'FDShortleyWellerSolver2p5D':
+            solver = FDShortleyWellerSolver2p5D(
+                chamber=self.chamber,
+                x_grid=self.x_grid,
+                y_grid=self.y_grid,
+                z_grid=self.z_grid,
+                context=self._buffer.context,
+                **self.solver_kwargs
+            )
+        elif solver == 'FDStaircaseSolver2p5D':
+            solver = FDStaircaseSolver2p5D(
+                chamber=self.chamber,
+                x_grid=self.x_grid,
+                y_grid=self.y_grid,
+                z_grid=self.z_grid,
+                context=self._buffer.context,
+                **self.solver_kwargs
+            )
         else:
             raise ValueError(f'solver name {solver} not recognized')
 
-        return solver
+        return solver, solvertype
 
     @property
     def x_grid(self):
