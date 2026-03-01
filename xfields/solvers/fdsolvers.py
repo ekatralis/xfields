@@ -48,8 +48,10 @@ class FDStaircaseSolver2p5D(Solver):
         dx = x_grid[1] - x_grid[0]
         dy = y_grid[1] - y_grid[0]
         
-        assert dx == dy, ("Only uniform grids can be used with this solver")
-        Dh = dx
+        np.testing.assert_almost_equal(dx, dy, 
+                                       err_msg="Only uniform grids can " \
+                                       "be used with this solver")
+        Dh = np.average([dx, dy])
 
         [xn, yn] = np.meshgrid(x_grid,y_grid, indexing = 'ij')
         xn = xn.flatten(order='F')
@@ -240,9 +242,10 @@ class FDShortleyWellerSolver2p5D(Solver):
 
         dx = x_grid[1] - x_grid[0]
         dy = y_grid[1] - y_grid[0]
-        
-        assert dx == dy, ("Only uniform grids can be used with this solver")
-        Dh = dx
+        np.testing.assert_almost_equal(dx, dy, 
+                                       err_msg="Only uniform grids can " \
+                                       "be used with this solver")
+        Dh = np.average([dx, dy])
 
         [xn, yn] = np.meshgrid(x_grid,y_grid, indexing = 'ij')
         xn = xn.flatten(order='F')
@@ -315,7 +318,9 @@ class FDShortleyWellerSolver2p5D(Solver):
                     A[u,u-nx]=2./(hs*(hs+hn));    #phi(i,j-1)
                     A[u,u+nx]=2./(hn*(hs+hn));    #phi(i,j+1)
 
-                # Build Dx matrix
+                # Build Dy matrix
+                # if (hs < Dh*tol_der) and (hn < Dh*tol_der):
+                #     pass
                 if hn<Dh*tol_der:
                     if hs>=Dh*tol_der:
                         Dy[u,u] = 1./hs
@@ -330,7 +335,9 @@ class FDShortleyWellerSolver2p5D(Solver):
                     Dy[u,u+nx]= 1./(2*hn)
 
 
-                # Build Dy matrix	
+                # Build Dx matrix	
+                # if (hw < Dh*tol_der) and (he < Dh*tol_der):
+                #     pass
                 if he<Dh*tol_der:
                     if hw>=Dh*tol_der:
                         Dx[u,u] = 1./hw
@@ -369,20 +376,31 @@ class FDShortleyWellerSolver2p5D(Solver):
         self.MselT = self.sparse_lib.csr_matrix(Msel.T)
         np.testing.assert_allclose(Dx@np.ones(Dx.shape[1]),np.zeros(Dx.shape[1]) , atol=1e-10)
         np.testing.assert_allclose(Dy@np.ones(Dy.shape[1]),np.zeros(Dy.shape[1]) , atol=1e-10)
+        Dxxn = Dx@xn
+        Dxyn = Dx@yn
+        Dyyn = Dy@yn
+        Dyxn = Dy@xn
+        print(np.where(Dxxn>1.)[0])
         import matplotlib.pyplot as plt
-        plt.figure(1)
-        plt.imshow(np.reshape(Dx@xn, (nx, ny), order = 'F').T)
+        plt.figure(100)
+        plt.imshow(flag_outside_n_mat.T)
+        plt.figure(1+4)
+        plt.imshow(np.reshape(Dxxn, (nx, ny), order = 'F').T)
         plt.colorbar()
-        plt.figure(2)
-        plt.imshow(np.reshape(Dx@yn, (nx, ny), order = 'F').T)
+        plt.figure(2+4)
+        plt.imshow(np.reshape(Dxyn, (nx, ny), order = 'F').T)
         plt.colorbar()
-        plt.figure(3)
-        plt.imshow(np.reshape(Dy@yn, (nx, ny), order = 'F').T)
+        plt.figure(3+4)
+        plt.imshow(np.reshape(Dyyn, (nx, ny), order = 'F').T)
         plt.colorbar()
-        plt.figure(4)
-        plt.imshow(np.reshape(Dy@xn, (nx, ny), order = 'F').T)
+        plt.figure(4+4)
+        plt.imshow(np.reshape(Dyxn, (nx, ny), order = 'F').T)
         plt.colorbar()
         plt.show()
+        self.xn_debug = np.reshape(xn, (nx, ny), order = 'F')
+        self.yn_debug = np.reshape(yn, (nx, ny), order = 'F')
+        self.flag_outside_n_debug = flag_outside_n_mat
+
         # np.testing.assert_allclose((Dx@xn)[flag_inside_n],np.ones(sum(flag_inside_n)) , atol=1e-10)
         # np.testing.assert_allclose((Dy@yn)[flag_inside_n],np.ones(sum(flag_inside_n)) , atol=1e-10)
         self.Dx = self.sparse_lib.csr_matrix(Dx)
