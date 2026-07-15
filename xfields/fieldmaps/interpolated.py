@@ -233,6 +233,10 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
         self.compile_kernels(
             only_if_needed=True,
         )
+        if solver_kwargs is None:
+            solver_kwargs = {}
+        else:
+            assert isinstance(solver_kwargs, dict)
         self.solver_kwargs = solver_kwargs
         self.chamber = chamber
         if isinstance(solver, str):

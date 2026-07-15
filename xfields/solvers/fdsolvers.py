@@ -78,7 +78,6 @@ class _FDSolver2p5D(Solver):
         xn = xn.flatten(order='F')
         yn = yn.flatten(order='F')
         
-        # import matplotlib.pyplot as plt
         flag_outside_n = chamber.is_outside(xn,yn)
         flag_inside_n = ~flag_outside_n
         flag_outside_n_mat = np.reshape(flag_outside_n,(nx,ny), order = 'F')
@@ -131,7 +130,7 @@ class FDStaircaseSolver2p5D(_FDSolver2p5D):
                  context: xo.context.XContext = None
                  ):
         
-        A, Dx, Dy, xn, yn, flag_inside_n, flag_outside_n_mat = super.__init__(chamber = chamber, 
+        A, Dx, Dy, xn, yn, flag_inside_n, flag_outside_n_mat = super().__init__(chamber = chamber, 
                                                                 x_grid = x_grid, 
                                                                 y_grid = y_grid, 
                                                                 z_grid = z_grid,
