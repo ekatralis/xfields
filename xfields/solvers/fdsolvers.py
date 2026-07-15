@@ -15,29 +15,49 @@ import xobjects as xo
 # from PyPIC.geom_impact_poly import polyg_cham_geom_object as PyPIC_Chamber
 from ._temp.geom_impact_poly import polyg_cham_geom_object as PyPIC_Chamber
 import scipy.sparse as scsp
+from xobjects.general import _print
 
 from tqdm import tqdm
 
+na = lambda x:np.array([x])
 
-class FDStaircaseSolver2p5D(Solver):
+def _remove_external_nodes_from_mat(pls_do: bool,
+                                    A: scsp.sparray
+                                    ):
+    A = A.tocsr()
+    if pls_do:
+        diagonal = A.diagonal()
+        N_full = len(diagonal)
+        indices_non_id = np.where(diagonal!=1.)[0]
+        N_sel = len(indices_non_id)
+        Msel = scsp.lil_matrix((N_full, N_sel))
+        for ii, ind in enumerate(indices_non_id):
+            Msel[ind, ii] =1.
+    else:
+        diagonal = A.diagonal()
+        N_full = len(diagonal)
+        Msel = scsp.lil_matrix((N_full, N_full))
+        for ii in range(N_full):
+            Msel[ii, ii] =1.
+    Msel = Msel.tocsr()
+    Asel = Msel.T*A*Msel
+    return Asel, Msel
+class _FDSolver2p5D(Solver):
 
-    def __init__(self, chamber: PyPIC_Chamber, 
+    def __init__(self,
+                 chamber: PyPIC_Chamber, 
                  x_grid: np.ndarray,
                  y_grid: np.ndarray,
                  z_grid: np.ndarray = None,
-                 sparse_solver: str = None, 
-                 sparse_solver_kwargs: dict = None,
-                 remove_external_nodes_from_mat: bool = True,
                  context: xo.context.XContext = None
                  ):
         
+        _print("[XFields] Finite Differences init")
         if context is None:
             context = context_default
 
         self.context = context
-        print("[XFields] Staircase init")
-        # To generate pairs of xy coordinates. We iterate with F contiguity in mind
-        # as such, we use the "indexing='ij'" option for meshgrid
+
         nx = len(x_grid)
         ny = len(y_grid)
         if z_grid is not None:
@@ -47,21 +67,20 @@ class FDStaircaseSolver2p5D(Solver):
 
         dx = x_grid[1] - x_grid[0]
         dy = y_grid[1] - y_grid[0]
-        
         # Almost equal to avoid rounding issues
         np.testing.assert_almost_equal(dx, dy, 
                                        err_msg="Only uniform grids can " \
                                        "be used with this solver")
-        Dh = np.average([dx, dy])
+        self.Dh = np.average([dx, dy])
+        self.shape = (nx, ny, nbatches)
 
         [xn, yn] = np.meshgrid(x_grid,y_grid, indexing = 'ij')
         xn = xn.flatten(order='F')
         yn = yn.flatten(order='F')
         
         # import matplotlib.pyplot as plt
-        flag_outside_n=chamber.is_outside(xn,yn)
-        flag_inside_n=~(flag_outside_n)
-
+        flag_outside_n = chamber.is_outside(xn,yn)
+        flag_inside_n = ~flag_outside_n
         flag_outside_n_mat = np.reshape(flag_outside_n,(nx,ny), order = 'F')
         assert flag_outside_n_mat[0,:].all(), (
             "Chamber not inside grid on the left side"
@@ -75,15 +94,57 @@ class FDStaircaseSolver2p5D(Solver):
         assert flag_outside_n_mat[:,ny-1].all(), (
             "Chamber not inside grid on the bottom side"
         )
+
+        self.eps0_ctx = self.context.nparray_to_context_array(
+            np.array(epsilon_0)
+        )
+
+        A = scsp.lil_matrix((nx*ny,nx*ny))
+        Dx = scsp.lil_matrix((nx*ny,nx*ny))
+        Dy = scsp.lil_matrix((nx*ny,nx*ny))
+        return A, Dx, Dy, xn, yn, flag_inside_n, flag_outside_n_mat
+
+    
+    def solve(self,rho):
+        if rho.ndim > 2:
+            b = - rho.reshape(-1, rho.shape[-1], order = 'F') / self.eps0_ctx  # (nx*ny, nz)
+        else:
+            b = - rho.reshape(-1, order='F') / self.eps0_ctx  # (nx*ny)
+            
+        b = self.MselT@b
+        phi_sel = self.solver.solve(b)
+        phi = self.Msel@phi_sel
+        
+        return phi.reshape(rho.shape, order='F')
+
+
+class FDStaircaseSolver2p5D(_FDSolver2p5D):
+
+    def __init__(self, 
+                 chamber: PyPIC_Chamber, 
+                 x_grid: np.ndarray,
+                 y_grid: np.ndarray,
+                 z_grid: np.ndarray = None,
+                 sparse_solver: str = None, 
+                 sparse_solver_kwargs: dict = None,
+                 remove_external_nodes_from_mat: bool = True,
+                 context: xo.context.XContext = None
+                 ):
+        
+        A, Dx, Dy, xn, yn, flag_inside_n, flag_outside_n_mat = super.__init__(chamber = chamber, 
+                                                                x_grid = x_grid, 
+                                                                y_grid = y_grid, 
+                                                                z_grid = z_grid,
+                                                                context = context
+                                                                )
+        _print("[XFields] Finite Differences Staircase init")
+        nx, ny, nbatches = self.shape
+        Dh = self.Dh
         
         [gx,gy] = np.gradient(np.double(flag_outside_n_mat))
         gradmod=abs(gx)+abs(gy)
         flag_border_mat=np.logical_and((gradmod>0), flag_outside_n_mat)
         flag_border_n = flag_border_mat.flatten(order = "F")
-
-        A = scsp.lil_matrix((nx*ny,nx*ny))
-        Dx = scsp.lil_matrix((nx*ny,nx*ny))
-        Dy = scsp.lil_matrix((nx*ny,nx*ny))
 
         # Build A matrix
         for u in tqdm(range(0,nx*ny)):
@@ -119,33 +180,15 @@ class FDStaircaseSolver2p5D(Solver):
                 if flag_inside_n[u]:
                     Dy[u,u+nx] = 1/(2*Dh)
                     Dy[u,u-nx] = -1/(2*Dh)
-            
-
-        A=A.tocsr()
-
-        if remove_external_nodes_from_mat:
-            diagonal = A.diagonal()
-            N_full = len(diagonal)
-            indices_non_id = np.where(diagonal!=1.)[0]
-            N_sel = len(indices_non_id)
-            Msel = scsp.lil_matrix((N_full, N_sel))
-            for ii, ind in enumerate(indices_non_id):
-                Msel[ind, ii] =1.
-        else:
-            diagonal = A.diagonal()
-            N_full = len(diagonal)
-            Msel = scsp.lil_matrix((N_full, N_full))
-            for ii in range(N_full):
-                Msel[ii, ii] =1.
-        Msel = Msel.tocsr()
-        Asel = Msel.T*A*Msel
         
-        self.sparse_lib = self.context.splike_lib.sparse
-        self.Asel = self.sparse_lib.csr_matrix(Asel)
-        self.Msel = self.sparse_lib.csr_matrix(Msel)
-        self.MselT = self.sparse_lib.csr_matrix(Msel.T)
-        self.Dx = self.sparse_lib.csr_matrix(Dx)
-        self.Dy = self.sparse_lib.csr_matrix(Dy)
+        Asel, Msel = _remove_external_nodes_from_mat(remove_external_nodes_from_mat, A)
+        
+        sparse_lib = self.context.splike_lib.sparse
+        self.Asel = sparse_lib.csr_matrix(Asel)
+        self.Msel = sparse_lib.csr_matrix(Msel)
+        self.MselT = sparse_lib.csr_matrix(Msel.T)
+        self.Dx = sparse_lib.csr_matrix(Dx)
+        self.Dy = sparse_lib.csr_matrix(Dy)
 
         if sparse_solver_kwargs is None:
             sparse_solver_kwargs = {}
@@ -158,27 +201,10 @@ class FDStaircaseSolver2p5D(Solver):
         )
         
         self.flag_inside_xy = self.context.nparray_to_context_array(flag_inside_n.astype(np.int8))
-        self.eps0_ctx = self.context.nparray_to_context_array(
-            np.array(epsilon_0)
-        )
+class FDShortleyWellerSolver2p5D(_FDSolver2p5D):
 
-
-    def solve(self,rho):
-        if rho.ndim > 2:
-            b = - rho.reshape(-1, rho.shape[-1], order = 'F') / self.eps0_ctx  # (nx*ny, nz)
-        else:
-            b = - rho.reshape(-1, order='F') / self.eps0_ctx  # (nx*ny)
-            
-        b = self.MselT@b
-        phi_sel = self.solver.solve(b)
-        phi = self.Msel@phi_sel
-        
-        return phi.reshape(rho.shape, order='F')
-    
-
-class FDShortleyWellerSolver2p5D(Solver):
-
-    def __init__(self, chamber: PyPIC_Chamber, 
+    def __init__(self, 
+                 chamber: PyPIC_Chamber, 
                  x_grid: np.ndarray,
                  y_grid: np.ndarray,
                  z_grid: np.ndarray = None,
@@ -189,56 +215,19 @@ class FDShortleyWellerSolver2p5D(Solver):
                  tol_der: float = 0.1,
                  context: xo.context.XContext = None
                  ):
-        if context is None:
-            context = context_default
-
-        self.context = context
-        print("[XFields] ShortleyWeller init")
-        # To generate pairs of xy coordinates. We iterate with F contiguity in mind
-        # as such, we use the "indexing='ij'" option for meshgrid
-        nx = len(x_grid)
-        ny = len(y_grid)
-        if z_grid is not None:
-            nbatches = len(z_grid)
-        else:
-            nbatches = 0
-
-        dx = x_grid[1] - x_grid[0]
-        dy = y_grid[1] - y_grid[0]
-        # Almost equal to avoid rounding issues
-        np.testing.assert_almost_equal(dx, dy, 
-                                       err_msg="Only uniform grids can " \
-                                       "be used with this solver")
-        Dh = np.average([dx, dy])
-
-        [xn, yn] = np.meshgrid(x_grid,y_grid, indexing = 'ij')
-        xn = xn.flatten(order='F')
-        yn = yn.flatten(order='F')
         
-        # import matplotlib.pyplot as plt
-        flag_outside_n = chamber.is_outside(xn,yn)
-        flag_outside_n_mat = np.reshape(flag_outside_n,(nx,ny), order = 'F')
-        assert flag_outside_n_mat[0,:].all(), (
-            "Chamber not inside grid on the left side"
-        )
-        assert flag_outside_n_mat[nx-1,:].all(), (
-            "Chamber not inside grid on the right side"
-        )
-        assert flag_outside_n_mat[:,0].all(), (
-            "Chamber not inside grid on the top side"
-        )
-        assert flag_outside_n_mat[:,ny-1].all(), (
-            "Chamber not inside grid on the bottom side"
-        )
-
-        flag_inside_n = ~flag_outside_n
-        A=scsp.lil_matrix((nx*ny,nx*ny))
-        Dx=scsp.lil_matrix((nx*ny,nx*ny))
-        Dy=scsp.lil_matrix((nx*ny,nx*ny))
+        A, Dx, Dy, xn, yn, flag_inside_n, _ = super.__init__(chamber = chamber, 
+                                                             x_grid = x_grid, 
+                                                             y_grid = y_grid, 
+                                                             z_grid = z_grid,
+                                                             context = context
+                                                             )
+        _print("[XFields] Finite Differences Shortle-Weller init")
+        nx, ny, nbatches = self.shape
+        Dh = self.Dh
 
         list_internal_force_zero = []
         # Build A Dx Dy matrices 
-        na = lambda x:np.array([x])
         for u in tqdm(range(0,nx*ny), desc="Mat Assembly"):
             if flag_inside_n[u]:
 
@@ -309,33 +298,16 @@ class FDShortleyWellerSolver2p5D(Solver):
             else:
                 # external nodes
                 A[u,u]=1.
-        if remove_external_nodes_from_mat:
-            diagonal = A.diagonal()
-            N_full = len(diagonal)
-            indices_non_id = np.where(diagonal!=1.)[0]
-            N_sel = len(indices_non_id)
-            Msel = scsp.lil_matrix((N_full, N_sel))
-            for ii, ind in enumerate(indices_non_id):
-                Msel[ind, ii] =1.
-        else:
-            diagonal = A.diagonal()
-            N_full = len(diagonal)
-            Msel = scsp.lil_matrix((N_full, N_full))
-            for ii in range(N_full):
-                Msel[ii, ii] =1.
-        Msel = Msel.tocsr()
-        Asel = Msel.T*A*Msel
+                
+        Asel, Msel = _remove_external_nodes_from_mat(remove_external_nodes_from_mat, A)
         
-        self.sparse_lib = self.context.splike_lib.sparse
-        self.Asel = self.sparse_lib.csr_matrix(Asel)
-        self.Msel = self.sparse_lib.csr_matrix(Msel)
-        self.MselT = self.sparse_lib.csr_matrix(Msel.T)
-        self.flag_outside_n_debug = flag_outside_n_mat
+        sparse_lib = self.context.splike_lib.sparse
+        self.Asel = sparse_lib.csr_matrix(Asel)
+        self.Msel = sparse_lib.csr_matrix(Msel)
+        self.MselT = sparse_lib.csr_matrix(Msel.T)
 
         self.Dx = self.sparse_lib.csr_matrix(Dx)
         self.Dy = self.sparse_lib.csr_matrix(Dy)
-        self.xn = xn
-        self.yn = yn
 
         if sparse_solver_kwargs is None:
             sparse_solver_kwargs = {}
@@ -348,18 +320,3 @@ class FDShortleyWellerSolver2p5D(Solver):
         )
         
         self.flag_inside_xy = self.context.nparray_to_context_array(flag_inside_n.astype(np.int8))
-        self.eps0_ctx = self.context.nparray_to_context_array(
-            np.array(epsilon_0)
-        )
-
-    def solve(self,rho):
-        if rho.ndim > 2:
-            b = - rho.reshape(-1, rho.shape[-1], order = 'F') / self.eps0_ctx  # (nx*ny, nz)
-        else:
-            b = - rho.reshape(-1, order='F') / self.eps0_ctx  # (nx*ny)
-            
-        b = self.MselT@b
-        phi_sel = self.solver.solve(b)
-        phi = self.Msel@phi_sel
-        
-        return phi.reshape(rho.shape, order='F')
