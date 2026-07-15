@@ -173,7 +173,7 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
         '#include "xfields/fieldmaps/interpolated_src/central_diff.h"',
         '#include "xfields/fieldmaps/interpolated_src/linear_interpolators.h"',
         '#include "xfields/fieldmaps/interpolated_src/charge_deposition.h"',
-        '#include "xfields/fieldmaps/interpolated_src/linear_interepolators_border.h"',
+        '#include "xfields/fieldmaps/interpolated_src/linear_interpolators_border.h"',
     ]
 
     _depends_on = [xt.Particles]

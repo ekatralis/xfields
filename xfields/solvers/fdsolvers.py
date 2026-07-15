@@ -80,10 +80,6 @@ class FDStaircaseSolver2p5D(Solver):
         gradmod=abs(gx)+abs(gy)
         flag_border_mat=np.logical_and((gradmod>0), flag_outside_n_mat)
         flag_border_n = flag_border_mat.flatten(order = "F")
-        # plt.figure(12)
-        # plt.scatter(xn[flag_inside_n],yn[flag_inside_n],color = 'b')
-        # plt.scatter(xn[flag_outside_n],yn[flag_outside_n],color = 'r')
-        # plt.show()
 
         A = scsp.lil_matrix((nx*ny,nx*ny))
         Dx = scsp.lil_matrix((nx*ny,nx*ny))
@@ -127,36 +123,6 @@ class FDStaircaseSolver2p5D(Solver):
 
         A=A.tocsr()
 
-        # plt.figure(13)
-        # plt.spy(A, markersize=0.2) 
-        # A_coo = A.tocoo()
-
-        # # plt.figure(figsize=(6, 6))
-        # plt.scatter(A_coo.col, A_coo.row, s=1, c=A_coo.data)
-        # plt.gca().invert_yaxis()
-        # plt.xlabel("Column index")
-        # plt.ylabel("Row index")
-        # plt.title("Non-zero entries colored by value")
-        # plt.colorbar(label="Value")
- 
-        # plt.show()
-        # np.testing.assert_allclose(Dx@np.ones(Dx.shape[1]),np.zeros(Dx.shape[1]) , atol=1e-10)
-        # np.testing.assert_allclose(Dy@np.ones(Dy.shape[1]),np.zeros(Dy.shape[1]) , atol=1e-10)
-        import matplotlib.pyplot as plt
-        plt.figure(1)
-        plt.imshow(np.reshape(Dx@xn, (nx, ny), order = 'F').T)
-        plt.colorbar()
-        plt.figure(2)
-        plt.imshow(np.reshape(Dx@yn, (nx, ny), order = 'F').T)
-        plt.colorbar()
-        plt.figure(3)
-        plt.imshow(np.reshape(Dy@yn, (nx, ny), order = 'F').T)
-        plt.colorbar()
-        plt.figure(4)
-        plt.imshow(np.reshape(Dy@xn, (nx, ny), order = 'F').T)
-        plt.colorbar()
-        plt.show()
-
         if remove_external_nodes_from_mat:
             diagonal = A.diagonal()
             N_full = len(diagonal)
@@ -184,11 +150,6 @@ class FDStaircaseSolver2p5D(Solver):
         if sparse_solver_kwargs is None:
             sparse_solver_kwargs = {}
 
-        # self.solver = self.context.factorized_sparse_solver(self.Asel, 
-        #                                       n_batches=nbatches, 
-        #                                       force_solver=sparse_solver,
-        #                                       solverKwargs = sparse_solver_kwargs
-        #                                       )
         self.solver = xo.sparse.factorized_sparse_solver(self.Asel, 
                                               n_batches=nbatches, 
                                               force_solver=sparse_solver,
@@ -271,9 +232,9 @@ class FDShortleyWellerSolver2p5D(Solver):
         )
 
         flag_inside_n = ~flag_outside_n
-        A=scsp.lil_matrix((nx*ny,nx*ny)); #allocate a sparse matrix
-        Dx=scsp.lil_matrix((nx*ny,nx*ny)); #allocate a sparse matrix
-        Dy=scsp.lil_matrix((nx*ny,nx*ny)); #allocate a sparse matrix
+        A=scsp.lil_matrix((nx*ny,nx*ny))
+        Dx=scsp.lil_matrix((nx*ny,nx*ny))
+        Dy=scsp.lil_matrix((nx*ny,nx*ny))
 
         list_internal_force_zero = []
         # Build A Dx Dy matrices 
@@ -299,21 +260,17 @@ class FDShortleyWellerSolver2p5D(Solver):
                 else:
                     x_int,y_int,z_int,Nx_int,Ny_int, i_found_int = chamber.impact_point_and_normal(na(xn[u]), na(yn[u]), na(0.), na(xn[u-nx]), na(yn[u-nx]), na(0.), resc_fac=.995, flag_robust=False)
                     hs = np.abs(y_int[0]-yn[u])
-                    #~ print hs
 
                 if flag_inside_n[u+nx]: #phi(i,j+1)
                     hn = Dh
                 else:
                     x_int,y_int,z_int,Nx_int,Ny_int, i_found_int = chamber.impact_point_and_normal(na(xn[u]), na(yn[u]), na(0.), na(xn[u+nx]), na(yn[u+nx]), na(0.), resc_fac=.995, flag_robust=False)
                     hn = np.abs(y_int[0]-yn[u])
-                    #~ print hn
-
 
                 # Build A matrix
                 if hn<Dh*tol_stem or hs<Dh*tol_stem or hw<Dh*tol_stem or he<Dh*tol_stem: # nodes very close to the bounday
                     A[u,u] =1.
                     list_internal_force_zero.append(u)
-                    #print u, xn[u], yn[u]
                 else:
                     A[u,u] = -(2./(he*hw)+2/(hs*hn))
                     A[u,u-1]=2./(hw*(hw+he));     #phi(i-1,j)nx
@@ -322,8 +279,6 @@ class FDShortleyWellerSolver2p5D(Solver):
                     A[u,u+nx]=2./(hn*(hs+hn));    #phi(i,j+1)
 
                 # Build Dy matrix
-                # if (hs < Dh*tol_der) and (hn < Dh*tol_der):
-                #     pass
                 if hn<Dh*tol_der:
                     if hs>=Dh*tol_der:
                         Dy[u,u] = 1./hs
@@ -339,8 +294,6 @@ class FDShortleyWellerSolver2p5D(Solver):
 
 
                 # Build Dx matrix	
-                # if (hw < Dh*tol_der) and (he < Dh*tol_der):
-                #     pass
                 if he<Dh*tol_der:
                     if hw>=Dh*tol_der:
                         Dx[u,u] = 1./hw
@@ -377,35 +330,8 @@ class FDShortleyWellerSolver2p5D(Solver):
         self.Asel = self.sparse_lib.csr_matrix(Asel)
         self.Msel = self.sparse_lib.csr_matrix(Msel)
         self.MselT = self.sparse_lib.csr_matrix(Msel.T)
-        np.testing.assert_allclose(Dx@np.ones(Dx.shape[1]),np.zeros(Dx.shape[1]) , atol=1e-10)
-        np.testing.assert_allclose(Dy@np.ones(Dy.shape[1]),np.zeros(Dy.shape[1]) , atol=1e-10)
-        Dxxn = Dx@xn
-        Dxyn = Dx@yn
-        Dyyn = Dy@yn
-        Dyxn = Dy@xn
-        print(np.where(Dxxn>1.)[0])
-        import matplotlib.pyplot as plt
-        plt.figure(100)
-        plt.imshow(flag_outside_n_mat.T)
-        plt.figure(1+4)
-        plt.imshow(np.reshape(Dxxn, (nx, ny), order = 'F').T)
-        plt.colorbar()
-        plt.figure(2+4)
-        plt.imshow(np.reshape(Dxyn, (nx, ny), order = 'F').T)
-        plt.colorbar()
-        plt.figure(3+4)
-        plt.imshow(np.reshape(Dyyn, (nx, ny), order = 'F').T)
-        plt.colorbar()
-        plt.figure(4+4)
-        plt.imshow(np.reshape(Dyxn, (nx, ny), order = 'F').T)
-        plt.colorbar()
-        plt.show()
-        self.xn_debug = np.reshape(xn, (nx, ny), order = 'F')
-        self.yn_debug = np.reshape(yn, (nx, ny), order = 'F')
         self.flag_outside_n_debug = flag_outside_n_mat
 
-        # np.testing.assert_allclose((Dx@xn)[flag_inside_n],np.ones(sum(flag_inside_n)) , atol=1e-10)
-        # np.testing.assert_allclose((Dy@yn)[flag_inside_n],np.ones(sum(flag_inside_n)) , atol=1e-10)
         self.Dx = self.sparse_lib.csr_matrix(Dx)
         self.Dy = self.sparse_lib.csr_matrix(Dy)
         self.xn = xn
@@ -414,11 +340,6 @@ class FDShortleyWellerSolver2p5D(Solver):
         if sparse_solver_kwargs is None:
             sparse_solver_kwargs = {}
 
-        # self.solver = self.context.factorized_sparse_solver(self.Asel, 
-        #                                       n_batches=nbatches, 
-        #                                       force_solver=sparse_solver,
-        #                                       solverKwargs = sparse_solver_kwargs
-        #                                       )
         self.solver = xo.sparse.factorized_sparse_solver(self.Asel, 
                                               n_batches=nbatches, 
                                               force_solver=sparse_solver,
