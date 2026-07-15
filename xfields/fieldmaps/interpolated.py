@@ -233,8 +233,7 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
         self.compile_kernels(
             only_if_needed=True,
         )
-        if solver_kwargs is None:
-            self.solver_kwargs = {}
+        self.solver_kwargs = solver_kwargs
         self.chamber = chamber
         if isinstance(solver, str):
             self.solver, self.solver_type = self.generate_solver(solver, fftplan)

@@ -216,7 +216,7 @@ class FDShortleyWellerSolver2p5D(_FDSolver2p5D):
                  context: xo.context.XContext = None
                  ):
         
-        A, Dx, Dy, xn, yn, flag_inside_n, _ = super.__init__(chamber = chamber, 
+        A, Dx, Dy, xn, yn, flag_inside_n, _ = super().__init__(chamber = chamber, 
                                                              x_grid = x_grid, 
                                                              y_grid = y_grid, 
                                                              z_grid = z_grid,
@@ -305,9 +305,8 @@ class FDShortleyWellerSolver2p5D(_FDSolver2p5D):
         self.Asel = sparse_lib.csr_matrix(Asel)
         self.Msel = sparse_lib.csr_matrix(Msel)
         self.MselT = sparse_lib.csr_matrix(Msel.T)
-
-        self.Dx = self.sparse_lib.csr_matrix(Dx)
-        self.Dy = self.sparse_lib.csr_matrix(Dy)
+        self.Dx = sparse_lib.csr_matrix(Dx)
+        self.Dy = sparse_lib.csr_matrix(Dy)
 
         if sparse_solver_kwargs is None:
             sparse_solver_kwargs = {}
