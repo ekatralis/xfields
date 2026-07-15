@@ -95,11 +95,11 @@ double TriLinearInterpolatedFieldMap_interpolate_3d_map_scalar(
 	val = 
     	       iw.w000 * map[iw.ix   + (iw.iy  ) * iw.nx + (iw.iz  ) * iw.nx * iw.ny]
     	     + iw.w100 * map[iw.ix+1 + (iw.iy  ) * iw.nx + (iw.iz  ) * iw.nx * iw.ny]
-    	     + iw.w010 * map[iw.ix+  + (iw.iy+1) * iw.nx + (iw.iz  ) * iw.nx * iw.ny]
+    	     + iw.w010 * map[iw.ix+  + (iw.iy+1) * iw.nx + (iw.iz  ) * iw.nx * iw.ny] 
     	     + iw.w110 * map[iw.ix+1 + (iw.iy+1) * iw.nx + (iw.iz  ) * iw.nx * iw.ny]
     	     + iw.w001 * map[iw.ix   + (iw.iy  ) * iw.nx + (iw.iz+1) * iw.nx * iw.ny]
     	     + iw.w101 * map[iw.ix+1 + (iw.iy  ) * iw.nx + (iw.iz+1) * iw.nx * iw.ny]
-    	     + iw.w011 * map[iw.ix+  + (iw.iy+1) * iw.nx + (iw.iz+1) * iw.nx * iw.ny]
+    	     + iw.w011 * map[iw.ix+  + (iw.iy+1) * iw.nx + (iw.iz+1) * iw.nx * iw.ny] 
     	     + iw.w111 * map[iw.ix+1 + (iw.iy+1) * iw.nx + (iw.iz+1) * iw.nx * iw.ny];
     }
 

@@ -78,6 +78,21 @@ _TriLinearInterpolatedFielmap_kernels = {
             ],
         n_threads='n_points'
         ),
+    'TriLinearInterpolatedFieldMap_interpolate_3d_map_vector_border_xy': xo.Kernel(
+        args=[
+            xo.Arg(xo.ThisClass, pointer=False, name='fmap'),
+            xo.Arg(xo.Int64,   pointer=False, name='n_points'),
+            xo.Arg(xo.Float64, pointer=True,  name='x'),
+            xo.Arg(xo.Float64, pointer=True,  name='y'),
+            xo.Arg(xo.Float64, pointer=True,  name='z'),
+            xo.Arg(xo.Int64,   pointer=False, name='n_quantities'),
+            xo.Arg(xo.Int8,    pointer=True,  name='buffer_mesh_quantities'),
+            xo.Arg(xo.Int64,   pointer=True,  name='offsets_mesh_quantities'),
+            xo.Arg(xo.Int8,    pointer=True,  name='inside_xy'),
+            xo.Arg(xo.Float64, pointer=True,  name='particles_quantities'),
+            ],
+        n_threads='n_points'
+        ),
     }
 
 
@@ -158,6 +173,7 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
         '#include "xfields/fieldmaps/interpolated_src/central_diff.h"',
         '#include "xfields/fieldmaps/interpolated_src/linear_interpolators.h"',
         '#include "xfields/fieldmaps/interpolated_src/charge_deposition.h"',
+        '#include "xfields/fieldmaps/interpolated_src/linear_interepolators_border.h"',
     ]
 
     _depends_on = [xt.Particles]
@@ -236,6 +252,10 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
                 solvertype = type(solver)
             self.solver_type = solvertype
 
+        # Only Shortley-Weller requires the special border interpolation
+        self.use_border_interp = isinstance(self.solver, FDShortleyWellerSolver2p5D)
+        # Perhaps there is a benefit when using the Staircase solver as well, but I have not checked it yet
+
         # Set rho
         if rho is not None:
             self.update_rho(rho, force=True)
@@ -307,14 +327,25 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
         buffer_out = context.zeros(
                 shape=(nmaps_to_interp * len(x),), dtype=np.float64)
         if nmaps_to_interp > 0:
-            context.kernels.TriLinearInterpolatedFieldMap_interpolate_3d_map_vector(
-                    fmap=self._xobject,
-                    n_points=len(x),
-                    x=x, y=y, z=z,
-                    n_quantities=nmaps_to_interp,
-                    buffer_mesh_quantities=self._buffer.buffer,
-                    offsets_mesh_quantities=pos_in_buffer_of_maps_to_interp,
-                    particles_quantities=buffer_out)
+            if self.use_border_interp:
+                context.kernels.TriLinearInterpolatedFieldMap_interpolate_3d_map_vector_border_xy(
+                        fmap=self._xobject,
+                        n_points=len(x),
+                        x=x, y=y, z=z,
+                        n_quantities=nmaps_to_interp,
+                        buffer_mesh_quantities=self._buffer.buffer,
+                        offsets_mesh_quantities=pos_in_buffer_of_maps_to_interp,
+                        inside_xy=self.solver.flag_inside_xy,
+                        particles_quantities=buffer_out)
+            else:
+                context.kernels.TriLinearInterpolatedFieldMap_interpolate_3d_map_vector(
+                        fmap=self._xobject,
+                        n_points=len(x),
+                        x=x, y=y, z=z,
+                        n_quantities=nmaps_to_interp,
+                        buffer_mesh_quantities=self._buffer.buffer,
+                        offsets_mesh_quantities=pos_in_buffer_of_maps_to_interp,
+                        particles_quantities=buffer_out)
 
         # Split buffer
         particles_quantities = [buffer_out[ii*len(x):(ii+1)*len(x)]
@@ -457,6 +488,7 @@ class TriLinearInterpolatedFieldMap(xo.HybridClass):
             else:
                 _phi = _phi.reshape(-1, order='F')  # (nx*ny)
             
+            # Has potential for optimization. Can avoid intermediate copies perhaps
             # Calculate dphi_dx and dphi_dy using FD matrices
             _dphi_dx = (self.solver.Dx @ _phi).flatten(order = 'F')
             _dphi_dy = (self.solver.Dy @ _phi).flatten(order = 'F')
