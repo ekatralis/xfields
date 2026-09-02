@@ -12,8 +12,8 @@ from .base import Solver
 from xobjects import context_default
 import xtrack as xt
 import xobjects as xo
-# from PyPIC.geom_impact_poly import polyg_cham_geom_object as PyPIC_Chamber
-from ._temp.geom_impact_poly import polyg_cham_geom_object as PyPIC_Chamber
+# from PyPIC.pypic_chambers import polyg_cham_geom_object as PyPIC_Chamber
+from ._temp.pypic_chambers import polyg_cham_geom_object as PyPIC_Chamber
 import scipy.sparse as scsp
 from xobjects.general import _print
 
@@ -55,7 +55,10 @@ class _FDSolver2p5D(Solver):
         _print("[XFields] Finite Differences init")
         if context is None:
             context = context_default
-
+        
+        if "opencl" in str(context):
+            raise ValueError("Finite Differences solvers are not supported on OpenCL contexts.")
+        
         self.context = context
 
         nx = len(x_grid)
